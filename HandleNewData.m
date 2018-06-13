@@ -120,9 +120,9 @@ RecIfTVs=@(x) bart(['pics -S -m -R T:7:0:' num2str(x) ' -t'],BARTTrajMS(:,1:size
 RecIfWs=@(x) bart(['pics -S -m -R W:7:0:' num2str(x) ' -t'],BARTTrajMS(:,1:size(nukData,2)), permute(nukData,[3 2 4 1]), permute(SensX(:,:,:,SliI),[1 2 4 3]));
 % ScrfTV=@(x) gScoreImageSimilarity(RecIfTV(x),ARefImg,RefDx,RefDy);
 
-Lambda=1e-9;
-Rec=RecIfTVs(Lambda);
-% Rec=RecIfWs(Lambda);
+Lambda=1e-7;
+% Rec=RecIfTVs(Lambda);
+Rec=RecIfWs(Lambda);
 
 ShowAbsAngle(Rec)
 
@@ -138,6 +138,7 @@ for SliI=1:nSlices
     RecS(:,:,SliI)=RecIfTVs(Lambda);
 end
 %% Only one channel
+NTrg1=[128 128];
 nukData=ADataIsPy(:,20,SliI,1).';
 % nukData=nukData(:,42:end);
 
@@ -145,8 +146,9 @@ RecIfTVs=@(x) bart(['pics -S -m -R T:7:0:' num2str(x) ' -t'],BARTTrajMS(:,1:size
 RecIfWs=@(x) bart(['pics -S -m -R W:7:0:' num2str(x) ' -t'],BARTTrajMS(:,1:size(nukData,2)), permute(nukData,[3 2 4 1]), permute(ones(NTrg1),[1 2 4 3]));
 % ScrfTV=@(x) gScoreImageSimilarity(RecIfTV(x),ARefImg,RefDx,RefDy);
 
-Lambda=1e-2;
+Lambda=1e-9;
 Rec=RecIfTVs(Lambda);
+ShowAbsAngle(Rec)
 
 %% Only one channel
 for c=1:nChannels
@@ -238,10 +240,10 @@ Sz2=gsize(SensX,1:2);
 Mgc=imresizeBySlices(gflip(Mg(:,:,SliI+6),1:2),Sz2);
 Mskc=Mgc>7e-5;
 
-B0M2=B0Q2(:,:,SliI);
+B0M2=-B0Q2(:,:,SliI);
 B0M2(~Mskc)=0;
 %%
-B0M2=B0RealEx;
+% B0M2=B0RealEx;
 
 [U_TimeInMs2, IA_TimeInMs2, IB_TimeInMs2]=unique(TimeInMs2);
 nU_TimeInMs2=numel(U_TimeInMs2);
@@ -256,9 +258,10 @@ WeightedE=WE.*E;
 % nTS=7;
 clear ErrTS
 TS_Thresh=1e-5;
-for nTS=3:15
+for nTS=13:15
     disp(nTS)
     FesTimePoints=linspace(0,TimeInMs2(end)/1000,nTS);
+    TSC=exp(1i*2*pi*RepDotMult(B0M2,gpermute(FesTimePoints,[3 2])));  % exp(1i*2*pi*(TimeInMs2/1000)*B0M2);
     TSC2=reshape(TSC,prod(Sz2),nTS);
     WTSC2=WE.*TSC2;
     tic
@@ -294,7 +297,7 @@ GOP_MCSMBMS = ggpuNUFT_TS_MC_MB_MS(BARTTrajMS(:,1:size(nukData,2)),NTrg1,osf,wg,
 GOP_MC=GOP_MCSMBMS;
 nTrajP2=nU_TimeInMs2;
 %%
-GOP_MC = ggpuNUFT_TS_MCx(BARTTraj2,Sz2,osf,wg,sw,TSB(IB_TimeInMs2,:).',TSC,Sens);
+% GOP_MC = ggpuNUFT_TS_MCx(BARTTraj2,Sz2,osf,wg,sw,TSB(IB_TimeInMs2,:).',TSC,Sens);
 
 x = randn(Sz2) + 1j*randn(Sz2);
 y = randn([size(Sens,3) nTrajP2]) + 1j*randn([size(Sens,3) nTrajP2]);
@@ -303,24 +306,48 @@ Aty = GOP_MC'*y;
 Out=abs(x(:)'*Aty(:) - conj(y(:)'*Ax(:)))
 
 %%
-if(nShots==1)
-    TVOP=TVOP_MSlice;
-else
-    TVOP=TVOP_MTC_W([1 1 0 1e1]);
-end
+% if(nShots==1)
+%     TVOP=TVOP_MSlice;
+% else
+%     TVOP=TVOP_MTC_W([1 1 0 1e1]);
+% end
+% TVOP=Wavelet;
+XFM=1;
+% XFM = Wavelet('Daubechies',4,4);	% Wavelet
 DataP=nukData;
 
-AOdd = GOP_MCSMBMS;
+% AOdd = GOP_MCSMBMS;
 AOdd = GOP_MC;
 
-TVW=0.1;
+% TVW=0.1;
+TVW=3e-6;
 
-param=ExtendStruct(struct('pNorm',2,'TVWeight',TVW,'Itnlim',8,'FT',AOdd,'Verbose',false,'XFM',1,'TV',TVOP,'xfmWeight',0),init);
+
+% filterType:   string, 'Haar', 'Beylkin', 'Coiflet', 'Daubechies','Symmlet', 'Vaidyanathan','Battle'
+% Use suffix _TI for translation invariance, for example, 'Daubechies_TI'
+% filterSize: related to the support and vanishing moments of the particular wavelet (See MakeONFilter in wavelab)
+% wavScale: 	scallest scale of wavelet decomposition
+
+XFMStr='Daubechies';
+
+filterSize=4;
+wavScale=4;
+
+if(strcmp(XFMStr,'None'))
+    XFM=1;
+    xfmWeight=0;
+else
+    XFM = Wavelet(XFMStr,filterSize,wavScale);
+    xfmWeight = 3e-6;	% Weight for Transform L1 penalty
+end
+
+
+param=ExtendStruct(struct('pNorm',1,'TVWeight',TVW,'Itnlim',8,'FT',AOdd,'Verbose',false,'XFM',XFM,'TV',TVOP,'xfmWeight',xfmWeight),init);
 
 param.data =     DataP;
 
-param.pNorm=1;
-param.TVWeight=1e-7;
+% param.pNorm=1;
+% param.TVWeight=1e-5;
 % param.TVWeight=0.00001;
 % param.TVWeight=0.0001;
 % param.TVWeight=0.01*2;
@@ -393,11 +420,11 @@ for n=1:nfnlCgIters
     end
 end
 
-
-
-
-
-
+fgmontage(im_res,[0 7e-3]);
+XLbl=['L' num2str(param.pNorm) ', TVW=' num2str(param.TVWeight) ', ' XFMStr ' Size=' num2str(filterSize) ' Scale=' num2str(wavScale) ' W=' num2str(xfmWeight)];
+xlabel(XLbl)
+gprint(get(gcf,'Number'),[FN(1:end-4) XLbl],[]) 
+save([FN(1:end-4) XLbl '.mat'],'im_res');
 
 
 

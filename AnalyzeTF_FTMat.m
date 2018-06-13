@@ -82,6 +82,8 @@ for r=1:nReps
     save(RealDataFN,'Data');
 end
 %%
+AMCWithBias=AMC;
+%%
 for r=1:nReps
     M=load(['/media/a/f38a5baa-d293-4a00-9f21-ea97f318f647/home/a/TF/Out/OnRealData' num2str(r,'%02d') '.mat']);
 
@@ -97,4 +99,9 @@ D=MCE-MCO;
 fgmontage(mean(D(:,:,10:20),3))
 %%
 fgmontage(mean(D(:,:,5:35),3))
+%%
+MCE=abs(mean(AMC(:,:,6:2:36),3));
+MCO=abs(mean(AMC(:,:,5:2:35),3));
+D=MCE-MCO;
+fgmontage(D,[0 7e-3])
 

@@ -1,34 +1,22 @@
-BaseP='/media/a/DATA/2018_01_25/';
-FN='meas_MID131_dt_fieldmap_iso4mm_Ice_FID275';
-FN='meas_MID131_dt_fieldmap_iso4mm_Ice_FID275';
+BaseP='/media/a/DATA/FromRoy/S034/niftis/fieldmap/';
+M0='RoyHaa_200616_S034_20160620_001_007_BP_fieldmap32Ch_MGE3_G4_BP_fieldmap32Ch_MGE3_G4_E00_M.nii.gz';
+P0='RoyHaa_200616_S034_20160620_001_009_BP_fieldmap32Ch_MGE3_G4_BP_fieldmap32Ch_MGE3_G4_E00_P.nii.gz';
+M1='RoyHaa_200616_S034_20160620_001_011_BP_fieldmap32Ch_MGE3_G4_BP_fieldmap32Ch_MGE3_G4_E01_M.nii.gz';
+P1='RoyHaa_200616_S034_20160620_001_013_BP_fieldmap32Ch_MGE3_G4_BP_fieldmap32Ch_MGE3_G4_E01_P.nii.gz';
 
-BaseP='/media/a/DATA1/13May18/Phantom/';
-FN='meas_MID377_BP_fieldmap_4echos_FID17766';
+M0I=loadniidata([BaseP M0]);
+P0I=loadniidata([BaseP P0]);
+C0=M0I.*exp(1i*2*pi*P0I/4095);
 
-BaseP='/media/a/DATA1/13May18/Phantom/';
-FN='meas_MID377_BP_fieldmap_4echos_FID17766';
+M1I=loadniidata([BaseP M1]);
+P1I=loadniidata([BaseP P1]);
+C1=M1I.*exp(1i*2*pi*P1I/4095);
 
-BaseP='/media/a/DATA1/13May18/Me/';
-FN='meas_MID399_BP_fieldmap_4echos_FID17788';
-
-BaseP='/media/a/DATA/14May18/Ben/';
-FN='meas_MID123_BP_fieldmap_5echosX_FID17958';
-
-sTwix = mapVBVD([BaseP FN '.dat'],'removeOS','ignoreSeg','doAverage');
-Data=sTwix.image();
+I=cat(4,C0,C1);
 %%
-nSlices=numel(sTwix.hdr.Phoenix.sSliceArray.asSlice);
-% Ord=[1:2:nSlices 2:2:nSlices];
-Ord=[2:2:nSlices 1:2:nSlices];
-[~,ROrd]=sort(Ord);
+nSlices=size(I,3);
 %%
-D=gpermute(Data,[1 3 4 2 8 5 6 7]);
-PD=padLeft(D,24,2);
-PD=PD(:,:,:,:,:,ROrd);
-% PD=RepDotMult(PD,permute( mod(1:nSlices,2)*2-1,[1 6 3 4 5 2]));
-I=squeeze(fft3cg(PD));
-
-TEs_us=[sTwix.hdr.Phoenix.alTE{:}];
+TEs_us=[4600 9340];
 %%
 save([BaseP FN '.mat'],'I','sTwix');
 
@@ -36,27 +24,79 @@ save([BaseP FN '.mat'],'I','sTwix');
 WhichTwo=[1 2];
 
 M=squeeze(I(:,:,:,WhichTwo(1),:)./I(:,:,:,WhichTwo(2),:));
-% Mag=abs(M);
-Mag=squeeze(mean(abs(I(:,:,:,WhichTwo,:)),4));
+Mag=squeeze(sqrt(prod(abs(I(:,:,:,WhichTwo)),4)));
 
-Combined=squeeze(sum(Mag.*exp(1i*angle(M)),3));
-% Combined=sum(Combined,5);
+Combined=Mag.*exp(1i*angle(M));
 gammaMHz=42.5774806;
 gammaHz=gammaMHz*1e6;
 
 deltaTE_us=TEs_us(WhichTwo(2))-TEs_us(WhichTwo(1));
-scanFreq_Hz=sTwix.hdr.Config.ScanFrequency; % SystemFrequency
 
-dAngle=double(angle(Combined.*exp(1i*0*2*pi*scanFreq_Hz*deltaTE_us/1e6)));
+dAngle=double(angle(Combined));
 B0_Hz=dAngle/(2*pi*deltaTE_us/1e6);
 
-FirstEcho=squeeze(I(:,:,:,1,:));
-Mg=grmss(FirstEcho,3);
+Mg=Mag;
+%%
+WhichSli=1:nSlices;
+WhichSli=1:38;
+% WhichSli=15:20;
+[unwrapped] = cusackUnwrap(dAngle(:,:,WhichSli), Mg(:,:,WhichSli)/3000);
+% fgmontage(unwrapped)
+
+B0_HzU=unwrapped/(2*pi*deltaTE_us/1e6);
+fgmontage(B0_HzU)
+%%
+SliI=16;
+
+ToFit=B0_HzU(:,:,SliI);
+W=abs(Mg(:,:,SliI));
+
+ToFit(1,:)=ToFit(2,:);
+
+Dx=diff(ToFit,[],1)>30;
+Dx=[Dx(1,:); Dx];
+
+Dy=diff(ToFit,[],2)>30;
+Dy=[Dy(:,1) Dy];
+D=Dx | Dy;
+D=imdilate(D,ones(2));
+W(D)=0;
+%%
+fgmontage(cat(3,ToFit,W));
+%%
+[x,y]=meshgrid(1:128,1:128);
+xF=x(:);
+yF=y(:);
+wF=W(:);
+zF=ToFit(:);
+
+DForFit=3;
+x=xF(1:DForFit:end);
+y=yF(1:DForFit:end);
+z=zF(1:DForFit:end);
+w=wF(1:DForFit:end);
+fo = fitoptions('Weights',w,'Method','LowessFit','Span',0.01);
+tic
+sf = fit([x, y],z,'lowess',fo)
+% sf = fit([x, y],z,fo)
+toc
+% figure;plot(sf,[x,y],z)
+tic
+X=sf([xF(1:1:end),yF(1:1:end)]);
+toc
+X2=reshape(X,[128 128]);
+
+fgmontage(ToFit,[-800 400])
+fgmontage(X2,[-800 400])
+
+
+
 
 %%
-WhichSli=7;
+Mg(Mg==0)=eps;
+WhichSli=15;
 for WhichSli=1:nSlices
-    [PhiCostantini] = cunwrap(dAngle(:,:,WhichSli), struct('weight',Mg(:,:,WhichSli),'RoundK',false,'maxblocksize',60));
+    [PhiCostantini] = cunwrap(dAngle(:,:,WhichSli), struct('weight',Mg(:,:,WhichSli)/3000,'RoundK',false,'maxblocksize',10));
     DA=angle(gsum(Mg(:,:,WhichSli).*exp(1i*(PhiCostantini-dAngle(:,:,WhichSli)))));
     
     PhiCostantiniB=PhiCostantini-DA;
@@ -84,7 +124,7 @@ end
 %%
 fgmontage(PhiCostantini)
 %%
-% Cx=padRight(padLeft(Combined(:,:,WhichSli),5,2),6,2);
+Cx=padRight(padLeft(Combined(:,:,WhichSli),5,2),6,2);
 B0_HzUx=padRight(padLeft(B0_HzU,5,2),6,2);
 B0Q=imresizeBySlices(B0_HzUx,Sz2);
 B0Q=imresizeBySlices(B0_HzU,SnsSzB);
@@ -101,12 +141,11 @@ for SliI=1:nSlices
     disp(SliI);
     Sens(:,:,:,SliI)=RunESPIRiTForSensMaps(FirstEcho(:,:,:,SliI),0,SnsSz);
 end
-%%
 save([BaseP FN '.mat'],'I','sTwix','B0_Hz','Sens');
 %%
 SnsSzB=[128 128];
 for SliI=1:nSlices
-    disp(SliI); % 45 sec per slice!
+    disp(SliI);
     SensB(:,:,:,SliI)=RunESPIRiTForSensMaps(FirstEcho(:,:,:,SliI),0,SnsSzB);
 end
 %%

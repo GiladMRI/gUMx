@@ -21,4 +21,6 @@ addpath(genpath('~/HomeA/Tools/NIfTI_20140122'));
 
 addpath('~/HomeA/gUM');
 
+addpath(genpath('~/HomeA/gUM/ASPIRE-master'))
+
 setenv('TOOLBOX_PATH','~/HomeA/bart-0.4.03')
