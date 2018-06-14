@@ -1,4 +1,5 @@
-CurBartTraj=BARTTrajMS;
+CurBartTraj=BARTTrajAct;
+% CurBartTraj=BARTTrajMS;
 nTraj=size(CurBartTraj,2);
 figure;plot(CurBartTraj(1,:),CurBartTraj(2,:),'.');
 kMax=ceil(max(max(abs(CurBartTraj),[],2)));
@@ -14,33 +15,41 @@ C=linspaceWithHalfStep(-kMax,kMax,osN);
 
 % figure;plot(linspace(-kMax,kMax,osN+1),1,'.k');hold on;plot(C,1,'.r')
 %% Load HCP dataset
-DatasetP='/media/a/fd6c4d95-0129-4d66-b27b-4267b50519fd/HCPDataset/';
+% DatasetP='/media/a/fd6c4d95-0129-4d66-b27b-4267b50519fd/HCPDataset/';
+DatasetP='/media/a/H1/HCPDataset/';
 % OutP='/home/a/TF/srezx/dataset';
 D=dir([DatasetP '*.mat']);
 DFNs={D.name};
 Ni=numel(DFNs);
 % Ni=100;
-HCPData=NaN(256,256,Ni);
+HCPData=int16(zeros(256,256,Ni));
 for i=1:Ni
     if(mod(i,1000)==1), disp(i), end
     tmp=load([DatasetP DFNs{i}]);
-    HCPData(:,:,i)=tmp.CurIc;
+    tmp=int16(tmp.CurIc);
+    HCPData(:,:,i)=tmp;
 end
 %%
-RandFx=rand(Ni,1);
-RandFy=rand(Ni,1);
-RandFp=rand(Ni,1);
+save('/media/a/H1/HCPData_256x256_int16.mat','-v7.3','HCPData')
 %%
-ToFlip=RandFx>0.5;
-HCPData(:,:,ToFlip)=flip(HCPData(:,:,ToFlip),1);
-ToFlip=RandFy>0.5;
-HCPData(:,:,ToFlip)=flip(HCPData(:,:,ToFlip),2);
-ToFlip=RandFp>0.5;
-HCPData(:,:,ToFlip)=permute(HCPData(:,:,ToFlip),[2 1 3]);
-
+% RandFx=rand(Ni,1);
+% RandFy=rand(Ni,1);
+% RandFp=rand(Ni,1);
+% %%
+% ToFlip=RandFx>0.5;
+% HCPData(:,:,ToFlip)=flip(HCPData(:,:,ToFlip),1);
+% ToFlip=RandFy>0.5;
+% HCPData(:,:,ToFlip)=flip(HCPData(:,:,ToFlip),2);
+% ToFlip=RandFp>0.5;
+% HCPData(:,:,ToFlip)=permute(HCPData(:,:,ToFlip),[2 1 3]);
+%%
+save('/media/a/H1/HCPDataR_256x256_int16.mat','-v7.3','HCPData')
 %%
 CurSens=SensX(:,:,:,SliI);
 % CurSens=squeeze(SensB(:,:,:,12));
+ncc=size(CurSens,3);
+SensCC=CurSens;
+sccmtx=eye(ncc);
 %%
 DataSmallGoodChannels=CombineDims(CurSens,[1 2]);
 
@@ -112,7 +121,7 @@ grmss(CurIDataCXR2-CurIDataCXR)
 
 % save('~/HomeA/TF/NMapIndTesta.mat','NMapCR','CurIDataVR','CurIDataCXR');
 
-NMapFN='/media/a/f38a5baa-d293-4a00-9f21-ea97f318f647/home/a/NMapIndCB0.mat';
+NMapFN='/media/a/H1/NMapIndCB0.mat';
 save(NMapFN,'NMapCR');
 % save('~/HomeA/TF/NMapIndCB0.mat','NMapCRC');
 %% GPU TS
@@ -137,30 +146,150 @@ Out=abs(x(:)'*Aty(:) - conj(y(:)'*Ax(:)))
 nI=size(HCPData,3);
 % P=randperm(nI);
 %%
-% nTrain=20000;
 nTrain=nI;
+nTrain=20000;
+% nTrain=10000;
 ChunkSize=100;
 %%
 CurIDataC=NaN([gsize(NMap,1:3) ncc]);
 %%
-SzTrg=[kMax kMax]*2;
+% SzTrg=[kMax kMax]*2;
+SzTrg=[128 128];
 %%
-dataFoldName='dataNeighborhoodRCB0';
-mkdir(['~/HomeA/TFDatasets/' dataFoldName '/']);
-system(['chmod -R 777 ' '~/HomeA/TFDatasets/' dataFoldName '/']);
-[status,msg,msgID] = fileattrib(['~/HomeA/TFDatasets/' dataFoldName filesep],'+w','a');
+BaseDatasetsP='/media/a/H1/TFDatasets/';
+dataFoldName='HCP128x128ImagesWithPhase';
+mkdir([BaseDatasetsP dataFoldName '/']);
+system(['chmod -R 777 ' BaseDatasetsP dataFoldName '/']);
+[status,msg,msgID] = fileattrib([BaseDatasetsP dataFoldName filesep],'+w','a');
 
 nData=nTrain;
 ChunkStartI=1:ChunkSize:nData;
 ChunkEndI=min(ChunkStartI+ChunkSize-1,nData);
 %% Just the forward NUFT part
 AllImWithPhaseComplexSingle=single(zeros([nTrain SzTrg]));
-AllData=single(zeros([nTrain ncc nTrajAct]));
+AllData=single(zeros([nTrain-20000 ncc nTrajAct]));
 RandVecsForPhase=rand(nTrain,11);
+% RandVecsForPhase(20001:nTrain,:)=rand(nTrain-20000,11);
 %%
 for i=1:nTrain
     if(mod(i,100)==1), disp(i),end
-    CurI=HCPData(:,:,i);
+    CurI=double(HCPData(:,:,i));
+    CurI=imresize(CurI,Sz2);
+    Mx=max(1,max(CurI(:)));
+    CurI=CurI/Mx;
+    GPhi=GenerateRandomSinPhase(Sz2,5,0.1,RandVecsForPhase(i,:));
+    CurI=CurI.*GPhi;
+%     AllImWithPhaseFullSz(i,:,:)=
+    
+    if(all(SzTrg==Sz2))
+        CurITrg=CurI;
+    else
+%     F=fft2cg(CurI);
+%     FC=crop(F,SzTrg);
+%     CurITrg=ifft2c(FC);
+    end
+    
+    AllImWithPhaseComplexSingle(i,:,:)=single(CurITrg);
+end
+    %%
+% end
+% %%
+for i=1:nTrain
+    if(mod(i,100)==1), disp(i),end
+    CurI=double(squeeze(AllImWithPhaseComplexSingle(i,:,:)));
+    CurIData=GOP_MC*CurI;
+    AllData(i-20000,:,:)=CurIData;
+end
+%%
+save('/media/a/H1/All32kImWithPhaseComplexSingleX128x128.mat','-v7.3','AllImWithPhaseComplexSingle');
+save('/media/a/H1/AllDataHCPNoB08ChB0.mat','-v7.3','AllData');
+save('/media/a/H1/Rest20kPlusDataHCPNoB08ChB0.mat','-v7.3','AllData');
+%%
+AllData=load('AllDataHCPNoB08Ch.mat');AllData=AllData.AllData;
+AllImWithPhaseComplexSingle=load('AllImWithPhaseComplexSingle.mat');AllImWithPhaseComplexSingle=AllImWithPhaseComplexSingle.AllImWithPhaseComplexSingle;
+%% save Images
+clear LabelsP
+for k=201:205 %numel(ChunkStartI)
+    CurIs=(ChunkStartI(k):ChunkEndI(k)).';
+    CurChunkSize=numel(CurIs);
+    
+    AllLabel=AllImWithPhaseComplexSingle(CurIs,:,:);
+    LabelsP=cat(4,single(real(AllLabel)),single(imag(AllLabel)));
+    Labels=single(LabelsP);
+    
+    FNs=strcat(num2str(CurIs,'%05d'),'asd');
+    
+    CurIs=single(CurIs);
+    save('/media/a/H1/CurChunk.mat','Labels','FNs','CurIs')
+    
+    system(['~/HomeA/b.sh ~/HomeA/TF/Mat2TFRecx.py /media/a/H1/CurChunk.mat ' BaseDatasetsP dataFoldName '/ '])
+end
+%%
+% k=1
+% 
+% CurIs=(1:3).';
+% CurChunkSize=numel(CurIs);
+% 
+% AllLabel=AllImWithPhaseComplexSingle(CurIs,:,:);
+% LabelsP=cat(4,single(real(AllLabel)),single(imag(AllLabel)));
+% Labels=single(LabelsP);
+% 
+% FNs=strcat(num2str(CurIs,'%05d'),'asd');
+% 
+% CurIs=single(randi(7,3,1));
+% save('/media/a/H1/CurChunk.mat','Labels','FNs','CurIs')
+% 
+% system(['~/HomeA/b.sh ~/HomeA/TF/Mat2TFRecx.py /media/a/H1/CurChunk.mat ' BaseDatasetsP dataFoldName '/ '])
+
+%%
+BaseDatasetsP='/media/a/H1/TFDatasets/';
+dataFoldName='Traj5118Ben4minASL32ch';
+mkdir([BaseDatasetsP dataFoldName '/']);
+system(['chmod -R 777 ' BaseDatasetsP dataFoldName '/']);
+[status,msg,msgID] = fileattrib([BaseDatasetsP dataFoldName filesep],'+w','a');
+%% save Data
+clear DataPR
+for k=201:205 %numel(ChunkStartI)
+    CurIs=(ChunkStartI(k):ChunkEndI(k)).';
+    CurChunkSize=numel(CurIs);
+    
+    CurData=AllData(CurIs-20000,:,:);
+    DataPR=cat(4,single(real(CurData)),single(imag(CurData)));
+    
+    FNs=strcat(num2str(CurIs,'%05d'),'asd');
+    CurIs=single(CurIs);
+    save('/media/a/H1/CurChunk.mat','DataPR','FNs','CurIs')
+    
+    system(['~/HomeA/b.sh ~/HomeA/TF/Mat2TFRecx.py /media/a/H1/CurChunk.mat ' BaseDatasetsP dataFoldName '/ '])
+end
+%%
+%% save Data
+clear DataPR
+for k=20001:20500 %numel(ChunkStartI)    
+    CurData=squeeze(AllData(k-20000,:,:));
+    DataPR=cat(3,single(real(CurData)),single(imag(CurData)));
+    
+    CurFN=strcat(num2str(k,'%05d'),'asd');
+    save([BaseDatasetsP dataFoldName filesep CurFN '.mat'],'DataPR','k')
+    disp(k)
+end
+%%
+
+
+
+
+
+
+
+
+
+
+
+
+%%
+for i=1:nTrain
+    if(mod(i,100)==1), disp(i),end
+    CurI=double(squeeze(AllImWithPhaseComplexSingle(i,:,:)));
     CurI=imresize(CurI,Sz2);
     Mx=max(1,max(CurI(:)));
     CurI=CurI/Mx;
@@ -179,12 +308,7 @@ for i=1:nTrain
     CurIData=GOP_MC*CurI;
     AllData(i,:,:)=CurIData;
 end
-%%
-save('AllImWithPhaseComplexSingleX.mat','-v7.3','AllImWithPhaseComplexSingle');
-save('AllDataHCPNoB08ChB0.mat','-v7.3','AllData');
-%%
-AllData=load('AllDataHCPNoB08Ch.mat');AllData=AllData.AllData;
-AllImWithPhaseComplexSingle=load('AllImWithPhaseComplexSingle.mat');AllImWithPhaseComplexSingle=AllImWithPhaseComplexSingle.AllImWithPhaseComplexSingle;
+
 %% save as complex
 clear DataPR LabelsP
 for k=1:numel(ChunkStartI)

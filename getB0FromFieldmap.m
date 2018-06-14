@@ -8,14 +8,16 @@ FN='meas_MID377_BP_fieldmap_4echos_FID17766';
 BaseP='/media/a/DATA1/13May18/Phantom/';
 FN='meas_MID377_BP_fieldmap_4echos_FID17766';
 
-BaseP='/media/a/DATA1/13May18/Me/';
+BaseP='/media/a/DATA/13May18/Me/';
 FN='meas_MID399_BP_fieldmap_4echos_FID17788';
 
-BaseP='/media/a/DATA/14May18/Ben/';
-FN='meas_MID123_BP_fieldmap_5echosX_FID17958';
+% BaseP='/media/a/DATA/14May18/Ben/';
+% FN='meas_MID123_BP_fieldmap_5echosX_FID17958';
 
 sTwix = mapVBVD([BaseP FN '.dat'],'removeOS','ignoreSeg','doAverage');
 Data=sTwix.image();
+
+mkdir([BaseP FN]);
 %%
 nSlices=numel(sTwix.hdr.Phoenix.sSliceArray.asSlice);
 % Ord=[1:2:nSlices 2:2:nSlices];
@@ -30,7 +32,7 @@ I=squeeze(fft3cg(PD));
 
 TEs_us=[sTwix.hdr.Phoenix.alTE{:}];
 %%
-save([BaseP FN '.mat'],'I','sTwix');
+% save([BaseP FN filesep 'IandsTwix.mat'],'I','sTwix');
 
 %%
 WhichTwo=[1 2];
@@ -52,9 +54,68 @@ B0_Hz=dAngle/(2*pi*deltaTE_us/1e6);
 
 FirstEcho=squeeze(I(:,:,:,1,:));
 Mg=grmss(FirstEcho,3);
+%%
+fgmontage(Mg);
+gprint(get(gcf,'Number'),[BaseP FN filesep 'Mg'],[]) 
+close(gcf);
+
+save([BaseP FN filesep 'FirstEcho.mat'],'FirstEcho');
+% load([BaseP FN filesep 'FirstEcho.mat'])
+%%
+WhichSli=1:nSlices;
+% WhichSli=1:38;
+% WhichSli=15:20;
+[unwrapped] = cusackUnwrap(dAngle(:,:,WhichSli), Mg(:,:,WhichSli)/3000);
+% fgmontage(unwrapped)
+
+B0_HzU=unwrapped/(2*pi*deltaTE_us/1e6);
+%%
+fgmontage(B0_HzU,[-800 200]);colorbar
+
+gprint(get(gcf,'Number'),[BaseP FN filesep 'B0_HzU'],[]) 
+close(gcf);
+
+save([BaseP FN filesep 'B0_HzU.mat'],'B0_HzU');
+% load([BaseP FN filesep 'B0_HzU.mat'])
+%%
+SnsSzB=[128 128];
+for SliI=1:nSlices
+    disp([num2str(SliI) ' ' datestr(now)]); % 45 sec per slice!
+    SensB(:,:,:,SliI)=RunESPIRiTForSensMaps(FirstEcho(:,:,:,SliI),0,SnsSzB);
+end
+%%
+save([BaseP FN filesep 'Sens.mat'],'SensB');
+for SliI=1:nSlices
+    ShowAbsAngle(SensB(:,:,:,SliI))
+    YLbl=['Sli' num2str(SliI,'%02d')];
+    ylabel(YLbl);
+    gprint(get(gcf,'Number'),[BaseP FN filesep 'Sens_' YLbl],[]) 
+    close(gcf);
+end
+%%
+load([BaseP FN filesep 'Sens.mat'])
+SnsSzB=gsize(SensB,1:2);
+%%
+B0Q=imresizeBySlices(B0_HzU,SnsSzB);
+%%
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 %%
-WhichSli=7;
+WhichSli=11;
 for WhichSli=1:nSlices
     [PhiCostantini] = cunwrap(dAngle(:,:,WhichSli), struct('weight',Mg(:,:,WhichSli),'RoundK',false,'maxblocksize',60));
     DA=angle(gsum(Mg(:,:,WhichSli).*exp(1i*(PhiCostantini-dAngle(:,:,WhichSli)))));
@@ -93,24 +154,19 @@ for i=1:numel(sTwix.hdr.Phoenix.sSliceArray.asSlice)
     LocFieldMap(i)=sTwix.hdr.Phoenix.sSliceArray.asSlice{i}.sPosition.dTra;
 end
 %%
+% SnsSz=[96 96];
+% for SliI=1:nSlices
+%     disp(SliI);
+%     Sens(:,:,:,SliI)=RunESPIRiTForSensMaps(FirstEcho(:,:,:,SliI),0,SnsSz);
+% end
+% %%
+% save([BaseP FN '.mat'],'I','sTwix','B0_Hz','Sens');
+% 
+% fgmontage(Mg);
+% gprint(get(gcf,'Number'),[BaseP FN filesep 'Mg'],[]) 
+% close(gcf);
 %%
-fgmontage(permute(Mg,[3 1 2]))
-%%
-SnsSz=[96 96];
-for SliI=1:nSlices
-    disp(SliI);
-    Sens(:,:,:,SliI)=RunESPIRiTForSensMaps(FirstEcho(:,:,:,SliI),0,SnsSz);
-end
-%%
-save([BaseP FN '.mat'],'I','sTwix','B0_Hz','Sens');
-%%
-SnsSzB=[128 128];
-for SliI=1:nSlices
-    disp(SliI); % 45 sec per slice!
-    SensB(:,:,:,SliI)=RunESPIRiTForSensMaps(FirstEcho(:,:,:,SliI),0,SnsSzB);
-end
-%%
-save([BaseP FN '.mat']);
+
 %%
 WhichTwo=[1 2];
 

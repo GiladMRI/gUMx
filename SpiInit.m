@@ -1,5 +1,8 @@
 clear
 
+cd('~/HomeA/gUM/Wavelab850');
+WavePath;
+
 run ( '~/HomeA/irt/setup.m');
 
 cd('~/HomeA/gUM');

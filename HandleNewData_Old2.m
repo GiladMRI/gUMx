@@ -15,12 +15,8 @@ FN='/media/a/DATA1/13May18/Me/meas_MID409_gBP_VD11_U19_7ADCs_FID17798.dat';
 
 FN='/media/a/DATA/14May18/Ben/meas_MID109_gBP_VD11_U19_4min_FID17944.dat';
 
-ScanP='/media/a/DATA/13May18/Me/';
-BaseFN='meas_MID409_gBP_VD11_U19_7ADCs_FID17798';
-
 ScanP='/media/a/DATA/14May18/Ben/';
 BaseFN='meas_MID111_gBP_VD11_U19_G35S155_FID17946';
-BaseFN='meas_MID109_gBP_VD11_U19_4min_FID17944';
 
 FN=[ScanP BaseFN '.dat'];
 %%
@@ -54,7 +50,7 @@ paramLongInterleaves =AData.hdr.MeasYaps.sWiPMemBlock.adFree{8};
 VD =AData.hdr.MeasYaps.sWiPMemBlock.adFree{5};
 paramLongSpGradAmp =AData.hdr.MeasYaps.sWiPMemBlock.adFree{11};
 paramLongSpSlewRate =AData.hdr.MeasYaps.sWiPMemBlock.adFree{10};
-%%
+
 save([ScanP BaseFN filesep 'Data.mat'],'ADataIsL','AData');
 %%
 % save('StatusForTrajDesign1Band_2.mat');
@@ -80,31 +76,15 @@ BARTTrajMS(3,end)=0;
 %%
 MaxK=max(BARTTrajMS(:));
 nTraj=size(BARTTrajMS,2);
-Acc=ceil(MaxK*2).^2/nTraj;
 figure;plot(BARTTrajMS(1,:),BARTTrajMS(2,:),'.')
-setXaxis([-1.1 1.1]*ceil(MaxK));
-setYaxis([-1.1 1.1]*ceil(MaxK));
+Acc=ceil(MaxK*2).^2/nTraj;
 title(['MaxK=' num2str(MaxK) ' #Traj=' num2str(nTraj) ' Acc=' num2str(Acc)]);
-%%
+
 gprint(get(gcf,'Number'),[ScanP BaseFN filesep 'Traj'],[]) 
 close(gcf);
 save([ScanP BaseFN filesep 'Traj.mat'],'BARTTrajMS');
 %%
-RefFldMapP='/media/a/DATA/13May18/Me/meas_MID399_BP_fieldmap_4echos_FID17788/';
-SensB=load([RefFldMapP 'Sens.mat']);
-SensB=SensB.SensB;
-SnsSzB=gsize(SensB,1:2);
 
-B0_HzU=load([RefFldMapP 'B0_HzU.mat']);
-B0_HzU=B0_HzU.B0_HzU;
-B0Q=imresizeBySlices(B0_HzU,SnsSzB);
-
-FirstEcho=load([RefFldMapP 'FirstEcho.mat']);
-FirstEcho=FirstEcho.FirstEcho;
-
-FirstEcho=gflip(FirstEcho,1:2);
-Mg=grmss(FirstEcho,3);
-% load('CurStatus_Ben4MinASL_x.mat','SensB','B0Q','Mg'); Mg=gflip(Mg,1:2);
 %%
 SensX=SensB(:,:,:,6+(1:12));
 SensX=gflip(SensX,1:2);
@@ -139,22 +119,23 @@ ADataIsPy=ADataIsPx(1:size(BARTTrajMS,2),:,:,:,:);
 
 ADataIsPy=RepDotMult(ADataIsPy,modx);
 
-clear ADataIsPx ADataIsP ADataIx ADataIsL
+clear ADataIsPx ADataIsP ADataIx
+%%
+%
+% osf = 2; % oversampling: 1.5 1.25
+% wg = 3; % kernel width: 5 7
+% sw = 8; % parallel sectors' width: 12 16
+
+% NTrg1=[96 96];
+% nBands=1;
+% nShots=paramLongInterleaves;
+% 
+% TSC_MB=ones([NTrg1 1 nBands]);
+
+% GOP_MCSMBMS = ggpuNUFT_TS_MC_MB_MS(BARTTrajMS(:,:,1:nShots),NTrg1,osf,wg,sw,ones(1,size(BARTTrajMS,2),nBands),TSC_MB,SensX(:,:,:,SliI));
 %%
 nukData=ADataIsPy(:,:,SliI,1).';
-
 nukData=nukData(:,3:end);
-nTraj=size(nukData,2);
-TimeInMs2=(0:nTraj-1)*2.5/1e3;
-T2SEstMs=20;
-T2SEstDecay=exp(-TimeInMs2/T2SEstMs);
-T2SEstComp=exp(TimeInMs2/T2SEstMs);
-
-Sz2=gsize(SensX,1:2);
-%%
-nukData=ADataIsPy(:,:,SliI,1).';
-nukData=nukData(:,3:end);
-nukData=nukData.*T2SEstComp;
 
 RecIfTVs=@(x) bart(['pics -S -m -R T:7:0:' num2str(x) ' -t'],BARTTrajMS(:,1:size(nukData,2)), permute(nukData,[3 2 4 1]), permute(SensX(:,:,:,SliI),[1 2 4 3]));
 RecIfWs=@(x) bart(['pics -S -m -R W:7:0:' num2str(x) ' -t'],BARTTrajMS(:,1:size(nukData,2)), permute(nukData,[3 2 4 1]), permute(SensX(:,:,:,SliI),[1 2 4 3]));
@@ -164,53 +145,130 @@ Lambda=1e-7;
 % Rec=RecIfTVs(Lambda);
 Rec=RecIfWs(Lambda);
 
-fgmontage(Rec)
-%%
-title(['BART No B0 W=' num2str(Lambda)]);
-YLbl=['Sli' num2str(SliI,'%02d')];
-ylabel(YLbl);
+ShowAbsAngle(Rec)
 
-gprint(get(gcf,'Number'),[ScanP BaseFN filesep YLbl '_BARTRecon_NoB0_W' num2str(Lambda) '_T2S20Comp'],[]) 
+gprint(get(gcf,'Number'),[ScanP BaseFN filesep 'BARTRecon_NoB0_W' num2str(Lambda)],[]) 
 close(gcf);
-save([ScanP BaseFN filesep YLbl '_BARTRecon_NoB0_W' num2str(Lambda) '_T2S20Comp.mat'],'Rec');
-%%
-figure;
-subplot(2,2,1);
-gmontage(Rec);title('BART recon');
-ylabel(YLbl);
-
-subplot(2,2,2);
-gmontage(Mg(:,:,SliI));title('FieldMap 1st echo mag');
-subplot(2,2,3);
-gmontage(SensX(:,:,:,SliI));title('Fieldmap sens');
-subplot(2,2,4);
-gmontage(B0Q2(:,:,SliI));title('Fieldmap B0 Hz');
-
-gprint(get(gcf,'Number'),[ScanP BaseFN filesep YLbl '_Params'],[]) 
-close(gcf);
+save([ScanP BaseFN filesep 'BARTRecon_NoB0_W' num2str(Lambda) '.mat'],'Rec');
 
 %%
 Lambda=1e-9;
 for SliI=1:nSlices
     nukData=ADataIsPy(:,:,SliI,1).';
     nukData=nukData(:,3:end);
-    nukData=nukData.*T2SEstComp;
 
     RecIfTVs=@(x) bart(['pics -S -m -R T:7:0:' num2str(x) ' -t'],BARTTrajMS(:,1:size(nukData,2)), permute(nukData,[3 2 4 1]), permute(SensX(:,:,:,SliI),[1 2 4 3]));
     RecIfWs=@(x) bart(['pics -S -m -R W:7:0:' num2str(x) ' -t'],BARTTrajMS(:,1:size(nukData,2)), permute(nukData,[3 2 4 1]), permute(SensX(:,:,:,SliI),[1 2 4 3]));
 
-    RecS(:,:,SliI)=RecIfWs(Lambda);
+    RecS(:,:,SliI)=RecIfTVs(Lambda);
 end
 %%
 fgmontage(RecS)
-gprint(get(gcf,'Number'),[ScanP BaseFN filesep 'BARTRecon_AllS_NoB0_W' num2str(Lambda) '_T2S20Comp'],[]) 
+gprint(get(gcf,'Number'),[ScanP BaseFN filesep 'BARTRecon_AllS_NoB0_W' num2str(Lambda)],[]) 
 close(gcf);
-save([ScanP BaseFN filesep 'BARTRecon_AllS_NoB0_W' num2str(Lambda) '_T2S20Comp.mat'],'RecS');
+save([ScanP BaseFN filesep 'BARTRecon_AllS_NoB0_W' num2str(Lambda) '.mat'],'RecS');
+
+%% Only one channel
+NTrg1=[128 128];
+nukData=ADataIsPy(:,20,SliI,1).';
+% nukData=nukData(:,42:end);
+
+RecIfTVs=@(x) bart(['pics -S -m -R T:7:0:' num2str(x) ' -t'],BARTTrajMS(:,1:size(nukData,2)), permute(nukData,[3 2 4 1]), permute(ones(NTrg1),[1 2 4 3]));
+RecIfWs=@(x) bart(['pics -S -m -R W:7:0:' num2str(x) ' -t'],BARTTrajMS(:,1:size(nukData,2)), permute(nukData,[3 2 4 1]), permute(ones(NTrg1),[1 2 4 3]));
+% ScrfTV=@(x) gScoreImageSimilarity(RecIfTV(x),ARefImg,RefDx,RefDy);
+
+Lambda=1e-9;
+Rec=RecIfTVs(Lambda);
+ShowAbsAngle(Rec)
+
+%% Only one channel
+for c=1:nChannels
+    nukData=ADataIsPy(:,c,SliI,1).';
+    % nukData=nukData(:,42:end);
+    
+    RecIfTVs=@(x) bart(['pics -S -m -R T:7:0:' num2str(x) ' -t'],BARTTrajMS(:,1:size(nukData,2)), permute(nukData,[3 2 4 1]), permute(ones(NTrg1),[1 2 4 3]));
+    RecIfWs=@(x) bart(['pics -S -m -R W:7:0:' num2str(x) ' -t'],BARTTrajMS(:,1:size(nukData,2)), permute(nukData,[3 2 4 1]), permute(ones(NTrg1),[1 2 4 3]));
+    % ScrfTV=@(x) gScoreImageSimilarity(RecIfTV(x),ARefImg,RefDx,RefDy);
+    
+    Lambda=1e-2;
+    RecC(:,:,c)=RecIfTVs(Lambda);
+end
 %%
-SliI=5;
+ShowAbsAngle(RecC)
+ShowAbsAngle(SensX(:,:,:,SliI))
+%%
+dx=-0
+kx=kxFull(B);
+ky=kyFull(B);
+modx=double(exp(1i*(dx*kx+dy*ky))');
+N=470;
+
+A = nuFTOperator([kx ky],[N N]);
+
+%%
+kx=BARTTrajMS(1,:).'/EffMaxRes*2*pi;
+ky=BARTTrajMS(2,:).'/EffMaxRes*2*pi;
+
+EffMaxRes
+N=floor(EffMaxRes);
+KK=[kx ky];
+A = nuFTOperator(KK,[N N]);
+
+close all
+
+proj=ADataIsPy(:,5,SliI,1).';
+% proj=reshape(permute(temp,[1 3 2]),[1 NRead*nWhichShots]).*modx;
+% proj=reshape(permute(temp,[1 3 2]),[1 NRead*nWhichShots]);
+% figure(5)
+
+QQ = regularizedReconstruction(A,proj',@L2Norm,lambda,'maxit', nit);
+
+%%
+figure(1);clf;QQ = regularizedReconstruction(A,proj',@L2Norm,1e+3,'maxit', nit);
+
+%% 2D spiral recon
+% close all
+
+temp=squeeze(data(:,c,WhichShots,p,s,1,1,e,r,n,:,1,1,1,1,1));
+% proj=reshape(permute(temp,[1 3 2]),[1 NRead*nWhichShots]).*modx;
+proj=reshape(permute(temp,[1 3 2]),[1 NRead*nWhichShots]);
+QQ = regularizedReconstruction(A,proj',@L2Norm,lambda,'maxit', nit);
+
+%%
+[kTraj, BaseRes, GradBuf, MaxGrad]=VDSpiralMex([dFOV,paramLongROSamples,spBW,AccR,paramLongInterleaves,VD,paramLongSpGradAmp,paramLongSpSlewRate]);
+
+clear kTrajQ
+kTrajQ(:,1) = interp1(1:size(kTraj,1),kTraj(:,1),1:1/4:(size(kTraj,1)-0.1));
+kTrajQ(:,2) = interp1(1:size(kTraj,1),kTraj(:,2),1:1/4:(size(kTraj,1)-0.1));
+
+BARTTrajx=kTrajQ.'*FOVx/1000/2/pi;
+BARTTrajx(3,end)=0;
+ADataIsP=double(permute(ADataIs,[1 3 2]));
+ADataIsPx=reshape(ADataIsP,[paramLongROSamples,3]);
+ADataIsPy=ADataIsPx(1:size(BARTTrajx,2),:);
+%%
+clear recoAD
+Sz3=[88 88];
+recoAD(:,:,c) = bart('pics -r:0.1 -R T:7:0:0.0010 -t ',BARTTrajx, ADataIsPy(:,c).', ones(Sz3));
+ShowAbsAngle(recoAD(:,:,c))
+%%
+clear recoAD
+
+Sz3=[88 88];
+recoAD(:,:,c) = bart('pics -r:0.1 -R T:7:0:0.0010 -t ',BARTTrajx(:,1:end-2), ADataIsPy(3:end,c).', ones(Sz3));
+ShowAbsAngle(recoAD(:,:,c))
+
+
+
+
+%%
+nukData=nukData(:,3:end);
+nTraj=size(nukData,2);
+TimeInMs2=(0:nTraj-1)*2.5/1e3;
+
+Sz2=gsize(SensX,1:2);
 %% All B0 effects across time
-% Mgc=imresizeBySlices(gflip(Mg(:,:,SliI+6),1:2),Sz2);
-Mgc=imresizeBySlices(Mg(:,:,SliI+6),Sz2);
+Mgc=imresizeBySlices(gflip(Mg(:,:,SliI+6),1:2),Sz2);
 Mskc=Mgc>7e-5;
 
 B0M2=-B0Q2(:,:,SliI);
@@ -248,7 +306,7 @@ for nTS=13:15
         break;
     end
 end
-figure(87234);clf;plot(log10(ErrTS),'-*')
+figure;plot(log10(ErrTS),'-*')
 %% GPU TS
 BARTTrajAct=BARTTrajMS(:,1:size(nukData,2));
 
@@ -281,9 +339,6 @@ Aty = GOP_MC'*y;
 Out=abs(x(:)'*Aty(:) - conj(y(:)'*Ax(:)))
 
 %%
-% T2SCompStr='';
-T2SCompStr='_T2S20Comp';
-%%
 % if(nShots==1)
 %     TVOP=TVOP_MSlice;
 % else
@@ -293,13 +348,12 @@ T2SCompStr='_T2S20Comp';
 XFM=1;
 % XFM = Wavelet('Daubechies',4,4);	% Wavelet
 DataP=nukData;
-nukData=nukData.*T2SEstComp;
 
 % AOdd = GOP_MCSMBMS;
 AOdd = GOP_MC;
 
 % TVW=0.1;
-TVW=1e-5;
+TVW=3e-6;
 
 
 % filterType:   string, 'Haar', 'Beylkin', 'Coiflet', 'Daubechies','Symmlet', 'Vaidyanathan','Battle'
@@ -317,7 +371,7 @@ if(strcmp(XFMStr,'None'))
     xfmWeight=0;
 else
     XFM = Wavelet(XFMStr,filterSize,wavScale);
-    xfmWeight = 1e-5;	% Weight for Transform L1 penalty
+    xfmWeight = 3e-6;	% Weight for Transform L1 penalty
 end
 
 
@@ -325,13 +379,23 @@ param=ExtendStruct(struct('pNorm',1,'TVWeight',TVW,'Itnlim',8,'FT',AOdd,'Verbose
 
 param.data =     DataP;
 
+% param.pNorm=1;
+% param.TVWeight=1e-5;
+% param.TVWeight=0.00001;
+% param.TVWeight=0.0001;
+% param.TVWeight=0.01*2;
+
 nfnlCgIters=40;
 RunFnlViewAmp=1;
 res=zeros(Sz2);
+% res=resC;
+% res=resB;
 if(nShots>1)
     res=repmat(resA,[1 1 1 nShots]);
     res=res+randn(size(res))*max(abs(resA(:)))/20;
 end
+% max(abs(resA(:)))
+
 
 FigH=4000;
 figure(FigH);close(FigH);
@@ -390,17 +454,13 @@ for n=1:nfnlCgIters
 end
 
 fgmontage(im_res,[0 7e-3]);
-XFMStrFull=['[' XFMStr ',' num2str(filterSize) ',' num2str(wavScale) ',' num2str(xfmWeight) ']'];
-%     XFMStr ' Size=' num2str(filterSize) ' Scale=' num2str(wavScale) ' W=' num2str(xfmWeight)
-XLbl=['L' num2str(param.pNorm) ',TVW=' num2str(param.TVWeight) ',' XFMStrFull ];
+XLbl=['L' num2str(param.pNorm) ', TVW=' num2str(param.TVWeight) ', ' XFMStr ' Size=' num2str(filterSize) ' Scale=' num2str(wavScale) ' W=' num2str(xfmWeight)];
 xlabel(XLbl)
-YLbl=['Sli' num2str(SliI,'%02d')];
-ylabel(YLbl);
+gprint(get(gcf,'Number'),[FN(1:end-4) XLbl],[]) 
+save([FN(1:end-4) XLbl '.mat'],'im_res');
 
-gprint(get(gcf,'Number'),[ScanP BaseFN filesep YLbl '_' XLbl T2SCompStr],[]) 
-close(gcf);
-save([ScanP BaseFN filesep YLbl '_' XLbl T2SCompStr '.mat'],'im_res');
-%%
+
+
 
 
 
